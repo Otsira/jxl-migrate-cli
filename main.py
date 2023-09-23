@@ -14,31 +14,50 @@ app = typer.Typer()
 
 @app.command()
 def main(
-    input_dir: str,
-    output_dir: Annotated[Optional[str], typer.Argument()] = None,
+    inputdir: str,
+    outputdir: Annotated[Optional[str], typer.Argument()] = None,
     lossless: bool = True,
     jobs: int = cpu_count(),
     remove: bool = False,
 ):
-    for root, _, files in os.walk(input_dir):
+    if not outputdir:
+        outputdir = inputdir
+    if not os.path.exists(outputdir):
+        os.makedirs(outputdir)
+    for root, _, files in os.walk(inputdir):
+        subfolder = os.path.relpath(root, inputdir)
+        if subfolder != "." and not os.path.exists(os.path.join(outputdir, subfolder)):
+            os.makedirs(os.path.join(outputdir, subfolder))
+        if subfolder != ".":
+            targetdir = os.path.join(outputdir, subfolder)
+        else:
+            targetdir = outputdir
         for filename in files:
-            print(os.path.join(root, filename))
+            handle_file(filename, root, targetdir, lossless, remove)
 
 
-def handle_file(filename, root):
-    if not filename.endswith(("jpg", "jpeg", "gif", "png", "apng", "webp")):
+def handle_file(filename, inputdir, outputdir, lossless=True, remove=False):
+    if not filename.endswith(("jpg", "jpeg", "gif", "png", "apng")):
         return None
+    bare_filename = os.path.splitext(filename)[0]
+    input_path = os.path.join(inputdir, filename)
+    output_path = os.path.join(outputdir, bare_filename + ".jxl")
+    if os.path.exists(output_path):
+        return None
+    transcode(input_path, output_path, lossless, remove)
 
 
-def transcode(input_path, target_path, lossless, jobs, remove):
+def transcode(input_path, target_path, lossless, remove):
     proc = subprocess.run(
-        "cjxl",
-        input_path,
-        target_path,
-        "-d",
-        "0" if lossless else "1",
-        "-j",
-        "1" if lossless else "0",
+        args=[
+            "cjxl",
+            input_path,
+            target_path,
+            "-d",
+            "0" if lossless else "1",
+            "-j",
+            "1" if lossless else "0",
+        ],
         capture_output=True,
     )
     if proc.returncode != 0 or not os.path.exists(target_path):
